@@ -6,11 +6,19 @@ description = "AHP (Azure Http Proxy) Client - Rust implementation"
 license = "MIT"
 repository = "https://github.com/jason-luo/ahpc-rs"
 
+[lib]
+name = "ahpc"
+crate-type = ["staticlib", "lib"]
+
+[[bin]]
+name = "ahpc"
+path = "src/main.rs"
+
 [dependencies]
 tokio = { version = "1", features = ["full"] }
+tokio-util = { version = "0.7", features = ["rt"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-clap = { version = "4", features = ["derive"] }
 aes = "0.8"
 rsa = { version = "0.9", features = ["sha2"] }
 sha1 = "0.10"
@@ -22,5 +30,4 @@ env_logger = "0.11"
 
 [profile.release]
 opt-level = 3
-lto = true
-strip = true
+strip = "debuginfo"

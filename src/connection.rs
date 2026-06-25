@@ -7,8 +7,10 @@ use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::time::timeout;
+use tokio_util::sync::CancellationToken;
 
-pub async fn run_proxy(config: Config) -> anyhow::Result<()> {
+/// Run the proxy, accepting connections until cancelled.
+pub async fn run_proxy(config: Config, cancel: CancellationToken) -> anyhow::Result<()> {
     let config = Arc::new(config);
     let bind_addr = format!("{}:{}", config.bind_address, config.listen_port);
     let listener = TcpListener::bind(&bind_addr)
@@ -17,21 +19,31 @@ pub async fn run_proxy(config: Config) -> anyhow::Result<()> {
     log::info!("Listening on {}", bind_addr);
 
     loop {
-        let (ua_socket, peer_addr) = match listener.accept().await {
-            Ok(v) => v,
-            Err(e) => {
-                error!("Accept error: {}", e);
-                continue;
+        tokio::select! {
+            result = listener.accept() => {
+                let (ua_socket, peer_addr) = match result {
+                    Ok(v) => v,
+                    Err(e) => {
+                        error!("Accept error: {}", e);
+                        continue;
+                    }
+                };
+                debug!("Accepted connection from {}", peer_addr);
+                let config = Arc::clone(&config);
+                tokio::spawn(async move {
+                    if let Err(e) = handle_connection(config, ua_socket).await {
+                        error!("Connection ended: {:#}", e);
+                    }
+                });
             }
-        };
-        debug!("Accepted connection from {}", peer_addr);
-        let config = Arc::clone(&config);
-        tokio::spawn(async move {
-            if let Err(e) = handle_connection(config, ua_socket).await {
-                error!("Connection ended: {:#}", e);
+            _ = cancel.cancelled() => {
+                log::info!("Proxy shutting down (cancel requested)");
+                break;
             }
-        });
+        }
     }
+
+    Ok(())
 }
 
 async fn handle_connection(config: Arc<Config>, ua_socket: TcpStream) -> anyhow::Result<()> {
