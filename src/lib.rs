@@ -44,7 +44,7 @@ pub extern "C" fn ahpc_start(config_json: *const c_char) -> i32 {
         Err(_) => return -1,
     };
 
-    let config: Config = match serde_json::from_str(json_str) {
+    let mut config: Config = match serde_json::from_str(json_str) {
         Ok(c) => c,
         Err(e) => {
             log::error!("Failed to parse config JSON: {}", e);
@@ -129,7 +129,7 @@ pub extern "C" fn ahpc_status() -> i32 {
 
 /// Run the proxy with a JSON config string, blocking until Ctrl+C is received.
 pub fn run_proxy_from_json(json: &str) -> anyhow::Result<()> {
-    let config: Config =
+    let mut config: Config =
         serde_json::from_str(json).context("Failed to parse config JSON")?;
     config.validate()?;
 
@@ -142,20 +142,18 @@ pub fn run_proxy_from_json(json: &str) -> anyhow::Result<()> {
     info!("cipher: {}", config.cipher);
 
     let cancel = CancellationToken::new();
-    let cancel_ctrl_c = cancel.clone();
-
-    // Handle Ctrl+C in a separate thread
-    std::thread::spawn(move || {
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        rt.block_on(tokio::signal::ctrl_c()).ok();
-        info!("Shutting down...");
-        cancel_ctrl_c.cancel();
-    });
-
     let rt = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(config.workers)
         .enable_all()
         .build()?;
+
+    // Handle Ctrl+C on the main runtime instead of creating a separate one
+    let cancel_ctrl_c = cancel.clone();
+    rt.spawn(async move {
+        tokio::signal::ctrl_c().await.ok();
+        info!("Shutting down...");
+        cancel_ctrl_c.cancel();
+    });
 
     rt.block_on(async { connection::run_proxy(config, cancel).await })
 }

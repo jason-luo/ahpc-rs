@@ -1,4 +1,4 @@
-use crate::config::{CipherKind, Config};
+use crate::config::Config;
 use crate::crypto::{self, CipherPair};
 use anyhow::Context;
 use log::{debug, error};
@@ -48,7 +48,9 @@ pub async fn run_proxy(config: Config, cancel: CancellationToken) -> anyhow::Res
 
 async fn handle_connection(config: Arc<Config>, ua_socket: TcpStream) -> anyhow::Result<()> {
     let timeout_dur = Duration::from_secs(config.timeout);
-    let cipher_kind = CipherKind::parse(&config.cipher).context("Invalid cipher configured")?;
+    let cipher_kind = config
+        .cipher_kind
+        .context("Invalid cipher configured")?;
 
     // 1. Connect to proxy server
     let proxy_addr = format!(

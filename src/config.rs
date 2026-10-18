@@ -26,6 +26,11 @@ pub struct Config {
 
     #[serde(default)]
     pub auth_key: String,
+
+    /// Cached cipher kind, parsed during validation.
+    #[serde(skip)]
+    #[serde(default)]
+    pub cipher_kind: Option<CipherKind>,
 }
 
 fn default_bind_address() -> String {
@@ -121,7 +126,7 @@ impl CipherKind {
 }
 
 impl Config {
-    pub fn validate(&self) -> anyhow::Result<()> {
+    pub fn validate(&mut self) -> anyhow::Result<()> {
         // Timeout floor: 30 seconds (matches C++ behavior)
         if self.timeout < 30 {
             bail!("timeout must be >= 30 seconds");
@@ -130,9 +135,10 @@ impl Config {
             bail!("workers must be 1..=16");
         }
 
-        // Validate cipher name
-        CipherKind::parse(&self.cipher)
+        // Validate and cache cipher kind
+        let kind = CipherKind::parse(&self.cipher)
             .with_context(|| format!("Unsupported cipher: {}", self.cipher))?;
+        self.cipher_kind = Some(kind);
 
         // Validate RSA public key by parsing it
         crate::crypto::parse_public_key(&self.rsa_public_key)
