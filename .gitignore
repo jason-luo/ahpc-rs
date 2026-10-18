@@ -22,3 +22,6 @@ target
 
 # ai workspace
 .codewhale/
+.idea/
+dist/
+client.json
